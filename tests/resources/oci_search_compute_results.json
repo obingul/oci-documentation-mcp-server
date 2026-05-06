@@ -1,0 +1,53 @@
+{
+  "type": "search-results",
+  "links": {
+    "next": "./pages?lang=en&q=compute instance&size=2&pg=2"
+  },
+  "pagination": {
+    "page": 1,
+    "pageSize": 2,
+    "totalCount": 10000,
+    "totalPages": 5000
+  },
+  "hits": [
+    {
+      "_score": 783.9364,
+      "_source": {
+        "title": "Compute Instances",
+        "url": "https://docs.oracle.com/en-us/iaas/compute-cloud-at-customer/cmn/compute/compute-instances.htm"
+      },
+      "highlight": {
+        "description": [
+          "You can provision and manage <em>compute</em> instances on <em>Compute</em> Cloud@Customer."
+        ],
+        "body": [
+          "You can connect to a <em>compute</em> <em>instance</em>."
+        ]
+      }
+    },
+    {
+      "_score": 760.6496,
+      "_source": {
+        "title": "Compute Instance Agent",
+        "url": "https://docs.oracle.com/en-us/iaas/Content/pl-sql-sdk/doc/compute-instance-agent-package.html"
+      },
+      "highlight": {
+        "description": [
+          "Oracle Cloud Agent manages plugins running on <em>compute</em> instances."
+        ]
+      }
+    },
+    {
+      "_score": 12.0,
+      "_source": {
+        "title": "Oracle Cloud Compute",
+        "url": "https://www.oracle.com/cloud/compute/"
+      },
+      "highlight": {
+        "description": [
+          "Marketing result that should be ignored."
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>cloud-infrastructure</title>
+    <link>https://blogs.oracle.com/cloud-infrastructure</link>
+    <lastBuildDate>Tue, 05 May 2026 15:58:24 +0000</lastBuildDate>
+    <item>
+      <title>Raising the bar for trustworthy AI at Oracle</title>
+      <link>https://blogs.oracle.com/cloud-infrastructure/raising-the-bar-for-trustworthy-ai-at-oracle</link>
+      <pubDate>Tue, 05 May 2026 17:00:00 +0000</pubDate>
+      <description><![CDATA[Oracle announces ISO/IEC 42001 certification for OCI and related services.]]></description>
+      <category><![CDATA[Oracle Cloud Infrastructure]]></category>
+      <category><![CDATA[AI governance]]></category>
+      <category><![CDATA[responsible AI]]></category>
+    </item>
+    <item>
+      <title>OCI IoT Platform Setup for Developers</title>
+      <link>https://blogs.oracle.com/cloud-infrastructure/oci-iot-setup-for-devs-prep-your-tenancy</link>
+      <pubDate>Mon, 04 May 2026 10:00:00 +0000</pubDate>
+      <description>Prepare your tenancy for OCI IoT development.</description>
+      <category>Oracle Cloud Infrastructure</category>
+      <category>IoT</category>
+    </item>
+  </channel>
+</rss>

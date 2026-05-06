@@ -1,0 +1,47 @@
+{
+  "type": "assets",
+  "pagination": {
+    "page": 1,
+    "pageSize": 2,
+    "totalCount": 2,
+    "totalPages": 1
+  },
+  "hits": [
+    {
+      "_id": "https://docs.oracle.com/en/solutions/oci-multicloud-genai-rag/index.html",
+      "_score": 12.5,
+      "_source": {
+        "title": "Deploy multicloud generative AI retrieval augmented generation (RAG)",
+        "description": "Deploy OCI Generative AI services across multiple cloud environments.",
+        "url": "https://docs.oracle.com/en/solutions/oci-multicloud-genai-rag/index.html",
+        "content_type": ["WM179068", "reference-architectures"],
+        "publish_date": "2026-04-24T06:00",
+        "breadcrumbs": {
+          "category": {
+            "href": "en/solutions",
+            "name": "Solutions"
+          }
+        },
+        "technologies": ["AI and Machine Learning", "Data Warehouse"]
+      },
+      "highlight": {
+        "description": ["Deploy <em>OCI</em> Generative AI services across clouds."]
+      }
+    },
+    {
+      "_id": "https://docs.oracle.com/en/solutions/oci-for-aws-professionals/index.html",
+      "_score": 10.1,
+      "_source": {
+        "title": "Oracle Cloud Infrastructure for Amazon Web Services professionals",
+        "description": "Compare OCI capabilities to similar capabilities in Amazon Web Services.",
+        "url": "https://docs.oracle.com/en/solutions/oci-for-aws-professionals/index.html",
+        "content_type": ["WM179068", "solution-playbook"],
+        "publish_date": "2026-04-24T06:00",
+        "technologies": ["Storage", "Database", "Security"]
+      },
+      "highlight": {
+        "body": ["Compare <em>OCI</em> and AWS services."]
+      }
+    }
+  ]
+}

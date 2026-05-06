@@ -1,0 +1,30 @@
+{
+  "total": 3977,
+  "results": [
+    {
+      "result_number": 1,
+      "title": "Introducing the Next Generation of OCI Compute Shapes | cloud-infrastructure",
+      "display_url": "https://blogs.oracle.com/cloud-infrastructure/oci-acceleron-computeshapes",
+      "image_url": "https://blogs.oracle.com/cloud-infrastructure/wp-content/uploads/sites/83/2026/04/acceleron-image.png",
+      "description": "OCI announcing new Acceleron based compute shapes.",
+      "blog_name": "cloud-infrastructure",
+      "display_date": "2026-04-16 00:00:00",
+      "keywords": ["OCI", "Compute", "Acceleron"],
+      "author": "Donald Lu",
+      "document_id": "https://blogs.oracle.com/cloud-infrastructure/oci-acceleron-computeshapes",
+      "score": 19.2
+    },
+    {
+      "result_number": 2,
+      "title": "Manage access to google workspace with OCI IAM | cloud-infrastructure",
+      "display_url": "https://blogs.oracle.com/cloud-infrastructure/manage-access-to-google-workspace-with-oci-iam",
+      "description": "Use OCI IAM to manage access for Google Workspace.",
+      "blog_name": "cloud-infrastructure",
+      "display_date": "2026-04-29 00:00:00",
+      "keywords": ["OCI", "IAM"],
+      "author": "Atul Goyal",
+      "document_id": "https://blogs.oracle.com/cloud-infrastructure/manage-access-to-google-workspace-with-oci-iam",
+      "score": 15.0
+    }
+  ]
+}
