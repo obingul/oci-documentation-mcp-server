@@ -22,7 +22,7 @@ This server helps MCP clients search OCI documentation, read OCI documentation p
 Install from Git when you want both the MCP server and the repo-scoped Codex skills:
 
 ```bash
-git clone <git-url> oci-documentation-mcp-server
+git clone https://github.com/obingul/oci-documentation-mcp-server.git oci-documentation-mcp-server
 cd oci-documentation-mcp-server
 uv sync
 ```
