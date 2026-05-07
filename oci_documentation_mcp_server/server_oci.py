@@ -5,9 +5,15 @@ import os
 import uuid
 from loguru import logger
 from mcp.server.fastmcp import Context, FastMCP
+from oci_documentation_mcp_server.architecture_center import (
+    ARCHITECTURE_CENTER_REFERER,
+    build_architecture_center_search_url,
+    parse_architecture_center_response,
+)
 from oci_documentation_mcp_server.evidence import (
     build_cited_answer,
     classify_intent,
+    dedupe_search_results,
     rank_search_results,
 )
 from oci_documentation_mcp_server.models import (
@@ -15,6 +21,11 @@ from oci_documentation_mcp_server.models import (
     SearchResponse,
     SearchResult,
     SourceDocument,
+)
+from oci_documentation_mcp_server.oracle_blogs import (
+    ORACLE_BLOG_REFERER,
+    build_oracle_blog_search_url,
+    parse_oracle_blog_search_response,
 )
 from oci_documentation_mcp_server.server_utils import (
     DEFAULT_USER_AGENT,
@@ -32,6 +43,7 @@ from oci_documentation_mcp_server.util import (
 )
 from pydantic import Field
 from typing import List, Optional
+from urllib.parse import urlparse
 
 
 SESSION_UUID = str(uuid.uuid4())
@@ -112,7 +124,7 @@ async def read_documentation(
 ) -> str:
     """Fetch and convert an OCI documentation page to markdown."""
     if not is_oci_documentation_url(url):
-        error_msg = f'Invalid URL: {url}. URL must be under https://docs.oracle.com/en-us/iaas/.'
+        error_msg = f'Invalid URL: {url}. URL must be under a supported docs.oracle.com documentation path.'
         await ctx.error(error_msg)
         return error_msg
 
@@ -127,7 +139,7 @@ async def read_sections(
 ) -> str:
     """Fetch selected sections from an OCI documentation page."""
     if not is_oci_documentation_url(url):
-        error_msg = f'Invalid URL: {url}. URL must be under https://docs.oracle.com/en-us/iaas/.'
+        error_msg = f'Invalid URL: {url}. URL must be under a supported docs.oracle.com documentation path.'
         await ctx.error(error_msg)
         return error_msg
 
@@ -195,6 +207,10 @@ async def search_documentation(
     except ValueError:
         results = parse_oci_search_results(response.text, limit)
 
+    results.extend(await _search_architecture_center(client, search_phrase, limit))
+    results.extend(await _search_oracle_blogs(client, search_phrase, limit))
+    results = _rank_combined_search_results(results, search_intent or search_phrase, limit)
+
     search_response = SearchResponse(search_results=results, facets=None, query_id=query_id)
     add_search_result_cache_item(search_response)
     return search_response
@@ -227,7 +243,7 @@ async def answer_question(
         [
             result
             for result in search_response.search_results
-            if result.url and is_oci_documentation_url(result.url)
+            if result.url and _is_readable_evidence_url(result.url)
         ],
         classify_intent(question),
     )
@@ -271,6 +287,86 @@ async def _search_public_search_page(
     if response.status_code >= 400:
         return []
     return parse_oci_search_results(response.text, limit)
+
+
+async def _search_architecture_center(
+    client: httpx.AsyncClient,
+    search_phrase: str,
+    limit: int,
+) -> list[SearchResult]:
+    """Search Architecture Center as a supplemental official Oracle source."""
+    try:
+        response = await client.get(
+            build_architecture_center_search_url(search_phrase, limit=limit),
+            follow_redirects=True,
+            headers={
+                'User-Agent': DEFAULT_USER_AGENT,
+                'Accept': 'application/json, text/javascript, */*; q=0.01',
+                'Referer': ARCHITECTURE_CENTER_REFERER,
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-MCP-Session-Id': SESSION_UUID,
+            },
+            timeout=30,
+        )
+    except httpx.HTTPError:
+        return []
+
+    if response.status_code >= 400:
+        return []
+    try:
+        return parse_architecture_center_response(response.json(), limit)
+    except ValueError:
+        return []
+
+
+async def _search_oracle_blogs(
+    client: httpx.AsyncClient,
+    search_phrase: str,
+    limit: int,
+) -> list[SearchResult]:
+    """Search Oracle Blogs as supplemental recent-context evidence."""
+    try:
+        response = await client.get(
+            build_oracle_blog_search_url(search_phrase, limit=limit),
+            follow_redirects=True,
+            headers={
+                'User-Agent': DEFAULT_USER_AGENT,
+                'Accept': 'application/json, text/javascript, */*; q=0.01',
+                'Referer': ORACLE_BLOG_REFERER,
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-MCP-Session-Id': SESSION_UUID,
+            },
+            timeout=30,
+        )
+    except httpx.HTTPError:
+        return []
+
+    if response.status_code >= 400:
+        return []
+    try:
+        return parse_oracle_blog_search_response(response.json(), limit)
+    except ValueError:
+        return []
+
+
+def _rank_combined_search_results(
+    results: list[SearchResult],
+    search_intent: str,
+    limit: int,
+) -> list[SearchResult]:
+    intent = classify_intent(search_intent)
+    ranked = rank_search_results(dedupe_search_results(results), intent)
+    return [
+        result.model_copy(update={'rank_order': index})
+        for index, result in enumerate(ranked[:limit], start=1)
+    ]
+
+
+def _is_readable_evidence_url(url: str) -> bool:
+    if is_oci_documentation_url(url):
+        return True
+    parsed = urlparse(url)
+    return parsed.netloc == 'blogs.oracle.com'
 
 
 def _is_unreadable_documentation(content: str) -> bool:

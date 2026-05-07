@@ -1,7 +1,13 @@
 """Tests for the OCI Documentation MCP server."""
 
+import json
 import pytest
-from oci_documentation_mcp_server.models import AnswerResponse, SearchResponse, SearchResult
+from oci_documentation_mcp_server.models import (
+    AnswerResponse,
+    SearchResponse,
+    SearchResult,
+    SourceType,
+)
 from oci_documentation_mcp_server.server_oci import (
     answer_question,
     ask_oci_docs,
@@ -15,6 +21,8 @@ from unittest.mock import AsyncMock, Mock, patch
 
 JSON_FIXTURE = Path(__file__).parent / 'resources' / 'oci_search_compute_results.json'
 HTML_FIXTURE = Path(__file__).parent / 'resources' / 'oci_search_compute_results.html'
+ARCHITECTURE_FIXTURE = Path(__file__).parent / 'resources' / 'oracle_solutions_assets.json'
+BLOG_FIXTURE = Path(__file__).parent / 'resources' / 'oracle_blog_search_results.json'
 
 
 class MockContext:
@@ -56,8 +64,9 @@ async def test_search_documentation_parses_html_results():
         'Compute Instances',
         'Compute Instance Agent',
     ]
-    mock_client.get.assert_called_once()
-    call_kwargs = mock_client.get.call_args.kwargs
+    assert mock_client.get.await_count == 3
+    docs_call = mock_client.get.await_args_list[0]
+    call_kwargs = docs_call.kwargs
     assert call_kwargs['headers']['X-Requested-With'] == 'XMLHttpRequest'
     assert call_kwargs['headers']['Referer'] == 'https://docs.oracle.com/search/?q=compute+instance'
 
@@ -98,6 +107,59 @@ async def test_search_documentation_falls_back_to_public_search_page_after_403()
     fallback_call = mock_client.get.await_args_list[1]
     assert fallback_call.args[0] == 'https://docs.oracle.com/search/?q=compute+instance+launch'
     assert fallback_call.kwargs['headers']['Accept'] == 'text/html,application/xhtml+xml'
+
+
+@pytest.mark.asyncio
+async def test_search_documentation_combines_source_specific_results():
+    """Return one intent-ranked response across docs, Learn, PaaS, Architecture Center, and Blogs."""
+    docs_response = Mock()
+    docs_response.status_code = 200
+    docs_response.text = ''
+    docs_response.json.return_value = {
+        'hits': [
+            {
+                '_source': {
+                    'url': 'https://docs.oracle.com/en/learn/oci-foundations/index.html',
+                    'title': 'Learn OCI Foundations',
+                }
+            },
+            {
+                '_source': {
+                    'url': 'https://docs.oracle.com/en/paas/application-integration/index.html',
+                    'title': 'Oracle Integration',
+                }
+            },
+        ]
+    }
+
+    architecture_response = Mock()
+    architecture_response.status_code = 200
+    architecture_response.json.return_value = json.loads(ARCHITECTURE_FIXTURE.read_text())
+
+    blog_response = Mock()
+    blog_response.status_code = 200
+    blog_response.json.return_value = json.loads(BLOG_FIXTURE.read_text())
+
+    mock_client = AsyncMock()
+    mock_client.get.side_effect = [docs_response, architecture_response, blog_response]
+    mock_client.__aenter__.return_value = mock_client
+
+    with patch('oci_documentation_mcp_server.server_oci.httpx.AsyncClient') as client_cls:
+        client_cls.return_value = mock_client
+
+        response = await search_documentation(
+            MockContext(),
+            search_phrase='latest oci integration examples',
+            search_intent='latest oci integration examples',
+            limit=6,
+        )
+
+    source_types = [result.source_type for result in response.search_results]
+    assert source_types[0] == SourceType.ORACLE_BLOG
+    assert SourceType.LEARN in source_types
+    assert SourceType.PAAS_DOCS in source_types
+    assert SourceType.ARCHITECTURE_CENTER in source_types
+    assert mock_client.get.await_count == 3
 
 
 @pytest.mark.asyncio
@@ -143,6 +205,49 @@ async def test_answer_question_searches_reads_and_returns_cited_answer():
     assert response.citations[0].url == search_result.url
     assert response.sources_consulted == [search_result]
     search_mock.assert_awaited_once()
+    read_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_answer_question_reads_blog_results_for_latest_context():
+    """Use Oracle Blogs as readable evidence when answering latest/news questions."""
+    blog_result = SearchResult(
+        rank_order=1,
+        url='https://blogs.oracle.com/cloud-infrastructure/oci-compute-announcement',
+        title='OCI Compute Announcement',
+        context='New OCI compute capabilities were announced.',
+        source_type=SourceType.ORACLE_BLOG,
+    )
+    search_response = SearchResponse(
+        search_results=[blog_result],
+        facets=None,
+        query_id='query-1',
+    )
+
+    with (
+        patch(
+            'oci_documentation_mcp_server.server_oci.search_documentation',
+            new=AsyncMock(return_value=search_response),
+        ),
+        patch(
+            'oci_documentation_mcp_server.server_oci.read_documentation_impl',
+            new=AsyncMock(
+                return_value=(
+                    'OCI Documentation from https://blogs.oracle.com/cloud-infrastructure/'
+                    'oci-compute-announcement:\n\n'
+                    'Oracle announced new OCI compute capabilities for recent workloads.'
+                )
+            ),
+        ) as read_mock,
+    ):
+        response = await answer_question(
+            MockContext(),
+            question='What is the latest OCI compute announcement?',
+            max_sources=1,
+        )
+
+    assert response.citations[0].source_type == SourceType.ORACLE_BLOG
+    assert response.citations[0].url == blog_result.url
     read_mock.assert_awaited_once()
 
 

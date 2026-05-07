@@ -9,6 +9,8 @@ class SourceType(str, Enum):
     """Content source roles used when building answers."""
 
     OFFICIAL_DOCS = 'official_docs'
+    LEARN = 'learn'
+    PAAS_DOCS = 'paas_docs'
     ARCHITECTURE_CENTER = 'architecture_center'
     ORACLE_BLOG = 'oracle_blog'
 

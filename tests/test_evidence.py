@@ -40,23 +40,30 @@ def test_classify_intent_routes_architecture_and_latest_queries():
 def test_rank_search_results_prefers_source_role_for_intent():
     """Rank by source role for the detected intent, not only backend order."""
     official = _result(1, SourceType.OFFICIAL_DOCS, 'https://docs.oracle.com/doc', 'Official docs')
+    learn = _result(4, SourceType.LEARN, 'https://docs.oracle.com/en/learn/example', 'Learn')
+    paas = _result(5, SourceType.PAAS_DOCS, 'https://docs.oracle.com/en/paas/example', 'PaaS')
     architecture = _result(
-        2,
+        6,
         SourceType.ARCHITECTURE_CENTER,
         'https://docs.oracle.com/en/solutions/example/index.html',
         'Architecture',
     )
-    blog = _result(3, SourceType.ORACLE_BLOG, 'https://blogs.oracle.com/example', 'Blog')
+    blog = _result(7, SourceType.ORACLE_BLOG, 'https://blogs.oracle.com/example', 'Blog')
+    sources = [blog, architecture, learn, paas, official]
 
-    architecture_ranked = rank_search_results(
-        [blog, official, architecture], IntentType.ARCHITECTURE
-    )
-    latest_ranked = rank_search_results([official, architecture, blog], IntentType.LATEST)
-    how_to_ranked = rank_search_results([blog, architecture, official], IntentType.HOW_TO)
+    reference_ranked = rank_search_results(sources, IntentType.REFERENCE)
+    how_to_ranked = rank_search_results(sources, IntentType.HOW_TO)
+    architecture_ranked = rank_search_results(sources, IntentType.ARCHITECTURE)
+    comparison_ranked = rank_search_results(sources, IntentType.COMPARISON)
+    latest_ranked = rank_search_results(sources, IntentType.LATEST)
+    example_ranked = rank_search_results(sources, IntentType.EXAMPLE)
 
+    assert reference_ranked[0].source_type == SourceType.PAAS_DOCS
+    assert how_to_ranked[0].source_type == SourceType.LEARN
     assert architecture_ranked[0].source_type == SourceType.ARCHITECTURE_CENTER
+    assert comparison_ranked[0].source_type == SourceType.ARCHITECTURE_CENTER
     assert latest_ranked[0].source_type == SourceType.ORACLE_BLOG
-    assert how_to_ranked[0].source_type == SourceType.OFFICIAL_DOCS
+    assert example_ranked[0].source_type == SourceType.LEARN
 
 
 def test_dedupe_search_results_keeps_first_url():

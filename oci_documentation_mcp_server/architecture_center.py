@@ -4,7 +4,7 @@ from bs4 import BeautifulSoup
 from oci_documentation_mcp_server.models import SearchResult, SourceType
 from oci_documentation_mcp_server.util import normalize_whitespace
 from typing import Any, Dict, List
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 
 ARCHITECTURE_CENTER_ASSETS_URL = (
@@ -66,7 +66,7 @@ def parse_architecture_center_response(data: Dict[str, Any], limit: int) -> List
 
         url = _first_string(source.get('url'), hit.get('_id'))
         title = _first_string(source.get('title'))
-        if not url or not title or url in seen_urls:
+        if not url or not title or not _is_architecture_center_url(url) or url in seen_urls:
             continue
 
         seen_urls.add(url)
@@ -91,6 +91,13 @@ def parse_architecture_center_response(data: Dict[str, Any], limit: int) -> List
         )
 
     return results
+
+
+def _is_architecture_center_url(url: str) -> bool:
+    parsed = urlparse(url)
+    return parsed.netloc == 'docs.oracle.com' and parsed.path.startswith(
+        ('/en/solutions/', '/solutions/')
+    )
 
 
 def _normalize_content_type(value: Any) -> str | None:

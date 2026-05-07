@@ -2,13 +2,19 @@
 
 import markdownify
 from bs4 import BeautifulSoup, Tag
-from oci_documentation_mcp_server.models import SearchResult
+from oci_documentation_mcp_server.models import SearchResult, SourceType
 from typing import Any, Dict, List
 from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
 
 OCI_DOCS_BASE_URL = 'https://docs.oracle.com'
-OCI_DOCS_PATH_PREFIX = '/en-us/iaas/'
+OCI_DOCS_PATH_PREFIXES = (
+    '/en-us/iaas/',
+    '/en/learn/',
+    '/en/paas/',
+    '/en/solutions/',
+    '/solutions/',
+)
 DEFAULT_OCI_SEARCH_URL = 'https://docs.oracle.com/apps/ohcsearchclient/api/v2/search/pages'
 DEFAULT_OCI_SEARCH_PAGE_URL = 'https://docs.oracle.com/search/'
 
@@ -21,7 +27,9 @@ def normalize_whitespace(value: str) -> str:
 def is_oci_documentation_url(url: str) -> bool:
     """Return whether a URL points at OCI documentation."""
     parsed = urlparse(url)
-    return parsed.netloc == 'docs.oracle.com' and parsed.path.startswith(OCI_DOCS_PATH_PREFIX)
+    return parsed.netloc == 'docs.oracle.com' and any(
+        parsed.path.startswith(prefix) for prefix in OCI_DOCS_PATH_PREFIXES
+    )
 
 
 def build_oci_search_url(
@@ -196,6 +204,7 @@ def parse_oci_search_results(html: str, limit: int) -> List[SearchResult]:
                 url=url,
                 title=title,
                 context=context or None,
+                source_type=_source_type_for_url(url),
             )
         )
 
@@ -237,6 +246,7 @@ def parse_oci_search_response(data: Dict[str, Any], limit: int) -> List[SearchRe
                 url=url,
                 title=normalize_whitespace(title),
                 context=context or None,
+                source_type=_source_type_for_url(url),
             )
         )
 
@@ -257,6 +267,19 @@ def _find_result_anchor(container: Tag) -> Tag | None:
         if is_oci_documentation_url(url):
             return anchor
     return None
+
+
+def _source_type_for_url(url: str) -> SourceType:
+    parsed = urlparse(url)
+    if parsed.netloc != 'docs.oracle.com':
+        return SourceType.OFFICIAL_DOCS
+    if parsed.path.startswith('/en/learn/'):
+        return SourceType.LEARN
+    if parsed.path.startswith('/en/paas/'):
+        return SourceType.PAAS_DOCS
+    if parsed.path.startswith(('/en/solutions/', '/solutions/')):
+        return SourceType.ARCHITECTURE_CENTER
+    return SourceType.OFFICIAL_DOCS
 
 
 def _extract_result_context(container: Tag, title: str) -> str:

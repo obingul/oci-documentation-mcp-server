@@ -11,6 +11,18 @@ This server helps MCP clients search OCI documentation, read OCI documentation p
 - `read_sections`: Fetch specific heading sections from an OCI documentation page.
 - `answer_question`: Search OCI documentation, read the most relevant pages, and return an extractive answer with citations.
 
+Supported Oracle documentation roots include `https://docs.oracle.com/en-us/iaas/`,
+`https://docs.oracle.com/en/learn/`, `https://docs.oracle.com/en/paas/`,
+`https://docs.oracle.com/en/solutions/`, and `https://docs.oracle.com/solutions/`.
+
+Search and answer ranking combine source roles:
+
+- `paas_docs`: PaaS product documentation for reference and configuration details.
+- `learn`: Oracle Learn tutorials for task-oriented how-to and example questions.
+- `architecture_center`: Oracle Architecture Center and Solutions for architecture and comparison questions.
+- `oracle_blog`: Oracle Blogs for latest announcements, recent examples, and product context.
+- `official_docs`: General OCI documentation for normative service behavior.
+
 ## Prompt Templates
 
 - `ask_oci_docs`: Answer an OCI documentation question with citations.
@@ -111,6 +123,28 @@ Use an MCP client for normal tool and prompt-template calls:
 
 ```text
 answer_question(question="How do I launch a compute instance?", max_sources=3)
+```
+
+An `answer_question` response includes bracketed citation IDs in the answer text and matching entries in `citations`:
+
+```json
+{
+  "question": "How do I launch a compute instance?",
+  "answer": "Based on the OCI documentation:\n- Create an instance from the Compute instances page, choose the image and shape, configure networking, add SSH keys, and then click Create. [1]",
+  "citations": [
+    {
+      "citation_id": 1,
+      "url": "https://docs.oracle.com/en-us/iaas/Content/Compute/Tasks/launchinginstance.htm",
+      "title": "Creating an Instance",
+      "source_type": "official_docs",
+      "excerpt": "Create an instance from the Compute instances page, choose the image and shape, configure networking, add SSH keys, and then click Create."
+    }
+  ],
+  "sources_consulted": [],
+  "query_id": "query-1",
+  "confidence": "medium",
+  "missing_information": []
+}
 ```
 
 ```text

@@ -168,33 +168,45 @@ def _source_priority(source_type: SourceType, intent: IntentType) -> float:
     """Return source priority for a specific user intent."""
     priorities = {
         IntentType.REFERENCE: {
+            SourceType.PAAS_DOCS: 3.5,
             SourceType.OFFICIAL_DOCS: 3.0,
+            SourceType.LEARN: 2.5,
             SourceType.ARCHITECTURE_CENTER: 2.0,
             SourceType.ORACLE_BLOG: 1.0,
         },
         IntentType.HOW_TO: {
-            SourceType.OFFICIAL_DOCS: 3.0,
+            SourceType.LEARN: 3.5,
+            SourceType.PAAS_DOCS: 3.0,
+            SourceType.OFFICIAL_DOCS: 2.5,
             SourceType.ARCHITECTURE_CENTER: 2.0,
             SourceType.ORACLE_BLOG: 1.0,
         },
         IntentType.ARCHITECTURE: {
             SourceType.ARCHITECTURE_CENTER: 3.0,
+            SourceType.PAAS_DOCS: 2.5,
             SourceType.OFFICIAL_DOCS: 2.0,
+            SourceType.LEARN: 1.5,
             SourceType.ORACLE_BLOG: 1.0,
         },
         IntentType.COMPARISON: {
             SourceType.ARCHITECTURE_CENTER: 3.0,
-            SourceType.OFFICIAL_DOCS: 3.0,
+            SourceType.PAAS_DOCS: 2.5,
+            SourceType.OFFICIAL_DOCS: 2.5,
+            SourceType.LEARN: 2.0,
             SourceType.ORACLE_BLOG: 1.0,
         },
         IntentType.LATEST: {
             SourceType.ORACLE_BLOG: 3.0,
+            SourceType.PAAS_DOCS: 2.5,
             SourceType.OFFICIAL_DOCS: 2.0,
             SourceType.ARCHITECTURE_CENTER: 1.5,
+            SourceType.LEARN: 1.0,
         },
         IntentType.EXAMPLE: {
+            SourceType.LEARN: 3.5,
             SourceType.ARCHITECTURE_CENTER: 3.0,
             SourceType.ORACLE_BLOG: 2.5,
+            SourceType.PAAS_DOCS: 2.0,
             SourceType.OFFICIAL_DOCS: 2.0,
         },
     }
