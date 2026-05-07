@@ -87,3 +87,6 @@ temp/
 !.agents/
 !.agents/skills/
 !.agents/skills/**
+
+# Generated documentation output
+docs/
