@@ -1,5 +1,6 @@
 """Tests for the OCI Documentation MCP server."""
 
+import httpx
 import json
 import pytest
 from oci_documentation_mcp_server.models import (
@@ -107,6 +108,42 @@ async def test_search_documentation_falls_back_to_public_search_page_after_403()
     fallback_call = mock_client.get.await_args_list[1]
     assert fallback_call.args[0] == 'https://docs.oracle.com/search/?q=compute+instance+launch'
     assert fallback_call.kwargs['headers']['Accept'] == 'text/html,application/xhtml+xml'
+
+
+@pytest.mark.asyncio
+async def test_search_documentation_keeps_client_open_for_supplemental_sources():
+    """Keep one live HTTP client through all federated search requests."""
+    real_async_client = httpx.AsyncClient
+    requested_urls = []
+    docs_payload = json.loads(JSON_FIXTURE.read_text())
+    architecture_payload = json.loads(ARCHITECTURE_FIXTURE.read_text())
+    blog_payload = json.loads(BLOG_FIXTURE.read_text())
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested_urls.append(str(request.url))
+        if '/api/v2/search/pages' in str(request.url):
+            return httpx.Response(200, json=docs_payload)
+        if '/api/v1/search/assets' in str(request.url):
+            return httpx.Response(200, json=architecture_payload)
+        if 'search-api.oracle.com/api/v1/search/blogs' in str(request.url):
+            return httpx.Response(200, json=blog_payload)
+        return httpx.Response(404, text=str(request.url))
+
+    def client_factory() -> httpx.AsyncClient:
+        return real_async_client(transport=httpx.MockTransport(handler))
+
+    with patch('oci_documentation_mcp_server.server_oci.httpx.AsyncClient', side_effect=client_factory):
+        response = await search_documentation(
+            MockContext(),
+            search_phrase='compute instance',
+            search_intent='create compute instance',
+            limit=3,
+        )
+
+    assert response.search_results
+    assert any('/api/v2/search/pages' in url for url in requested_urls)
+    assert any('/api/v1/search/assets' in url for url in requested_urls)
+    assert any('search-api.oracle.com/api/v1/search/blogs' in url for url in requested_urls)
 
 
 @pytest.mark.asyncio

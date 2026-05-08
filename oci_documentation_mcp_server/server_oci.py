@@ -184,36 +184,36 @@ async def search_documentation(
                 query_id=query_id,
             )
 
-    if response.status_code >= 400:
-        results = await _search_public_search_page(client, search_phrase, limit)
-        if results:
-            search_response = SearchResponse(search_results=results, facets=None, query_id=query_id)
-            add_search_result_cache_item(search_response)
-            return search_response
+        if response.status_code >= 400:
+            results = await _search_public_search_page(client, search_phrase, limit)
+            if results:
+                search_response = SearchResponse(search_results=results, facets=None, query_id=query_id)
+                add_search_result_cache_item(search_response)
+                return search_response
 
-        error_msg = (
-            f'Error searching OCI docs - status code {response.status_code}; '
-            'fallback search page returned no OCI documentation results'
-        )
-        await ctx.error(error_msg)
-        return SearchResponse(
-            search_results=[SearchResult(rank_order=1, url='', title=error_msg)],
-            facets=None,
-            query_id=query_id,
-        )
+            error_msg = (
+                f'Error searching OCI docs - status code {response.status_code}; '
+                'fallback search page returned no OCI documentation results'
+            )
+            await ctx.error(error_msg)
+            return SearchResponse(
+                search_results=[SearchResult(rank_order=1, url='', title=error_msg)],
+                facets=None,
+                query_id=query_id,
+            )
 
-    try:
-        results = parse_oci_search_response(response.json(), limit)
-    except ValueError:
-        results = parse_oci_search_results(response.text, limit)
+        try:
+            results = parse_oci_search_response(response.json(), limit)
+        except ValueError:
+            results = parse_oci_search_results(response.text, limit)
 
-    results.extend(await _search_architecture_center(client, search_phrase, limit))
-    results.extend(await _search_oracle_blogs(client, search_phrase, limit))
-    results = _rank_combined_search_results(results, search_intent or search_phrase, limit)
+        results.extend(await _search_architecture_center(client, search_phrase, limit))
+        results.extend(await _search_oracle_blogs(client, search_phrase, limit))
+        results = _rank_combined_search_results(results, search_intent or search_phrase, limit)
 
-    search_response = SearchResponse(search_results=results, facets=None, query_id=query_id)
-    add_search_result_cache_item(search_response)
-    return search_response
+        search_response = SearchResponse(search_results=results, facets=None, query_id=query_id)
+        add_search_result_cache_item(search_response)
+        return search_response
 
 
 @mcp.tool()
