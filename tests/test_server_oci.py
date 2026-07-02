@@ -69,12 +69,14 @@ async def test_search_documentation_parses_html_results():
     docs_call = mock_client.get.await_args_list[0]
     call_kwargs = docs_call.kwargs
     assert call_kwargs['headers']['X-Requested-With'] == 'XMLHttpRequest'
-    assert call_kwargs['headers']['Referer'] == 'https://docs.oracle.com/search/?q=compute+instance'
+    assert (
+        call_kwargs['headers']['Referer'] == 'https://docs.oracle.com/search/?q=compute+instance'
+    )
 
 
 @pytest.mark.asyncio
-async def test_search_documentation_falls_back_to_public_search_page_after_403():
-    """Return parsed HTML search results when the JSON backend blocks the request."""
+async def test_search_documentation_merges_supplemental_sources_after_public_fallback():
+    """Merge supplemental results after the JSON backend falls back to public HTML."""
     blocked_response = Mock()
     blocked_response.status_code = 403
     blocked_response.text = 'Forbidden'
@@ -89,25 +91,163 @@ async def test_search_documentation_falls_back_to_public_search_page_after_403()
     mock_client.__aenter__.return_value = mock_client
 
     ctx = MockContext()
-    with patch('oci_documentation_mcp_server.server_oci.httpx.AsyncClient') as client_cls:
+    architecture_result = SearchResult(
+        rank_order=1,
+        url='https://docs.oracle.com/solutions/example/index.html',
+        title='Architecture Center Result',
+        source_type=SourceType.ARCHITECTURE_CENTER,
+    )
+    blog_result = SearchResult(
+        rank_order=1,
+        url='https://blogs.oracle.com/cloud-infrastructure/post/example',
+        title='Oracle Blog Result',
+        source_type=SourceType.ORACLE_BLOG,
+    )
+    with (
+        patch('oci_documentation_mcp_server.server_oci.httpx.AsyncClient') as client_cls,
+        patch(
+            'oci_documentation_mcp_server.server_oci._search_architecture_center',
+            new=AsyncMock(return_value=[architecture_result]),
+        ) as architecture_search,
+        patch(
+            'oci_documentation_mcp_server.server_oci._search_oracle_blogs',
+            new=AsyncMock(return_value=[blog_result]),
+        ) as blog_search,
+    ):
         client_cls.return_value = mock_client
 
         response = await search_documentation(
             ctx,
             search_phrase='compute instance launch',
             search_intent='create compute instance',
-            limit=2,
+            limit=10,
         )
 
-    assert [result.title for result in response.search_results] == [
-        'Creating an Instance',
-        'Overview of Compute',
-    ]
+    result_titles = {result.title for result in response.search_results}
+    assert 'Creating an Instance' in result_titles
+    assert 'Architecture Center Result' in result_titles
+    assert 'Oracle Blog Result' in result_titles
     assert ctx.error.await_count == 0
     assert mock_client.get.await_count == 2
+    architecture_search.assert_awaited_once_with(mock_client, 'compute instance launch', 10)
+    blog_search.assert_awaited_once_with(mock_client, 'compute instance launch', 10)
     fallback_call = mock_client.get.await_args_list[1]
     assert fallback_call.args[0] == 'https://docs.oracle.com/search/?q=compute+instance+launch'
     assert fallback_call.kwargs['headers']['Accept'] == 'text/html,application/xhtml+xml'
+
+
+@pytest.mark.asyncio
+async def test_search_documentation_returns_architecture_result_when_official_paths_fail():
+    """Return Architecture Center evidence without reporting a tool-level error."""
+    blocked_response = Mock(status_code=403, text='Forbidden')
+    fallback_response = Mock(status_code=503, text='Unavailable')
+    mock_client = AsyncMock()
+    mock_client.get.side_effect = [blocked_response, fallback_response]
+    mock_client.__aenter__.return_value = mock_client
+    architecture_result = SearchResult(
+        rank_order=1,
+        url='https://docs.oracle.com/solutions/example/index.html',
+        title='Architecture Center Result',
+        source_type=SourceType.ARCHITECTURE_CENTER,
+    )
+    ctx = MockContext()
+
+    with (
+        patch('oci_documentation_mcp_server.server_oci.httpx.AsyncClient') as client_cls,
+        patch(
+            'oci_documentation_mcp_server.server_oci._search_architecture_center',
+            new=AsyncMock(return_value=[architecture_result]),
+        ) as architecture_search,
+        patch(
+            'oci_documentation_mcp_server.server_oci._search_oracle_blogs',
+            new=AsyncMock(return_value=[]),
+        ) as blog_search,
+    ):
+        client_cls.return_value = mock_client
+        response = await search_documentation(
+            ctx, search_phrase='compute', search_intent='compute', limit=5
+        )
+
+    assert [result.title for result in response.search_results] == ['Architecture Center Result']
+    assert ctx.error.await_count == 0
+    architecture_search.assert_awaited_once_with(mock_client, 'compute', 5)
+    blog_search.assert_awaited_once_with(mock_client, 'compute', 5)
+
+
+@pytest.mark.asyncio
+async def test_search_documentation_returns_blog_result_after_official_transport_error():
+    """Return Oracle Blog evidence after JSON transport and public HTML failures."""
+    request = httpx.Request('GET', 'https://docs.oracle.com/search/api/v2/search/pages')
+    fallback_response = Mock(status_code=503, text='Unavailable')
+    mock_client = AsyncMock()
+    mock_client.get.side_effect = [
+        httpx.ConnectError('blocked', request=request),
+        fallback_response,
+    ]
+    mock_client.__aenter__.return_value = mock_client
+    blog_result = SearchResult(
+        rank_order=1,
+        url='https://blogs.oracle.com/cloud-infrastructure/post/example',
+        title='Oracle Blog Result',
+        source_type=SourceType.ORACLE_BLOG,
+    )
+    ctx = MockContext()
+
+    with (
+        patch('oci_documentation_mcp_server.server_oci.httpx.AsyncClient') as client_cls,
+        patch(
+            'oci_documentation_mcp_server.server_oci._search_architecture_center',
+            new=AsyncMock(return_value=[]),
+        ) as architecture_search,
+        patch(
+            'oci_documentation_mcp_server.server_oci._search_oracle_blogs',
+            new=AsyncMock(return_value=[blog_result]),
+        ) as blog_search,
+    ):
+        client_cls.return_value = mock_client
+        response = await search_documentation(
+            ctx, search_phrase='compute', search_intent='compute', limit=5
+        )
+
+    assert [result.title for result in response.search_results] == ['Oracle Blog Result']
+    assert ctx.error.await_count == 0
+    architecture_search.assert_awaited_once_with(mock_client, 'compute', 5)
+    blog_search.assert_awaited_once_with(mock_client, 'compute', 5)
+
+
+@pytest.mark.asyncio
+async def test_search_documentation_reports_error_only_when_every_source_is_empty():
+    """Return one synthetic error only when all configured sources yield no results."""
+    empty_json_response = Mock(status_code=200, text='{}')
+    empty_json_response.json.return_value = {}
+    empty_html_response = Mock(status_code=200, text='<html></html>')
+    mock_client = AsyncMock()
+    mock_client.get.side_effect = [empty_json_response, empty_html_response]
+    mock_client.__aenter__.return_value = mock_client
+    ctx = MockContext()
+
+    with (
+        patch('oci_documentation_mcp_server.server_oci.httpx.AsyncClient') as client_cls,
+        patch(
+            'oci_documentation_mcp_server.server_oci._search_architecture_center',
+            new=AsyncMock(return_value=[]),
+        ) as architecture_search,
+        patch(
+            'oci_documentation_mcp_server.server_oci._search_oracle_blogs',
+            new=AsyncMock(return_value=[]),
+        ) as blog_search,
+    ):
+        client_cls.return_value = mock_client
+        response = await search_documentation(
+            ctx, search_phrase='compute', search_intent='compute', limit=5
+        )
+
+    assert len(response.search_results) == 1
+    assert response.search_results[0].url == ''
+    assert 'all configured search sources returned no results' in response.search_results[0].title
+    assert ctx.error.await_count == 1
+    architecture_search.assert_awaited_once_with(mock_client, 'compute', 5)
+    blog_search.assert_awaited_once_with(mock_client, 'compute', 5)
 
 
 @pytest.mark.asyncio
@@ -132,7 +272,9 @@ async def test_search_documentation_keeps_client_open_for_supplemental_sources()
     def client_factory() -> httpx.AsyncClient:
         return real_async_client(transport=httpx.MockTransport(handler))
 
-    with patch('oci_documentation_mcp_server.server_oci.httpx.AsyncClient', side_effect=client_factory):
+    with patch(
+        'oci_documentation_mcp_server.server_oci.httpx.AsyncClient', side_effect=client_factory
+    ):
         response = await search_documentation(
             MockContext(),
             search_phrase='compute instance',

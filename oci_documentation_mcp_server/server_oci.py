@@ -159,57 +159,23 @@ async def search_documentation(
     """Search OCI documentation and return parsed documentation results."""
     logger.debug(f'Searching OCI documentation for: {search_phrase}')
     query_id = str(uuid.uuid4())
-    search_url = build_oci_search_url(search_phrase, limit=limit, base_url=OCI_SEARCH_URL)
 
     async with httpx.AsyncClient() as client:
-        try:
-            response = await client.get(
-                search_url,
-                follow_redirects=True,
-                headers={
-                    'User-Agent': DEFAULT_USER_AGENT,
-                    'Accept': 'application/json, text/javascript, */*; q=0.01',
-                    'Referer': build_oci_search_referer(search_phrase),
-                    'X-Requested-With': 'XMLHttpRequest',
-                    'X-MCP-Session-Id': SESSION_UUID,
-                },
-                timeout=30,
-            )
-        except httpx.HTTPError as e:
-            error_msg = f'Error searching OCI docs: {str(e)}'
-            await ctx.error(error_msg)
-            return SearchResponse(
-                search_results=[SearchResult(rank_order=1, url='', title=error_msg)],
-                facets=None,
-                query_id=query_id,
-            )
-
-        if response.status_code >= 400:
-            results = await _search_public_search_page(client, search_phrase, limit)
-            if results:
-                search_response = SearchResponse(search_results=results, facets=None, query_id=query_id)
-                add_search_result_cache_item(search_response)
-                return search_response
-
-            error_msg = (
-                f'Error searching OCI docs - status code {response.status_code}; '
-                'fallback search page returned no OCI documentation results'
-            )
-            await ctx.error(error_msg)
-            return SearchResponse(
-                search_results=[SearchResult(rank_order=1, url='', title=error_msg)],
-                facets=None,
-                query_id=query_id,
-            )
-
-        try:
-            results = parse_oci_search_response(response.json(), limit)
-        except ValueError:
-            results = parse_oci_search_results(response.text, limit)
-
+        results = await _search_official_documentation(client, search_phrase, limit)
         results.extend(await _search_architecture_center(client, search_phrase, limit))
         results.extend(await _search_oracle_blogs(client, search_phrase, limit))
         results = _rank_combined_search_results(results, search_intent or search_phrase, limit)
+
+        if not results:
+            error_msg = (
+                'Error searching OCI docs: all configured search sources returned no results'
+            )
+            await ctx.error(error_msg)
+            return SearchResponse(
+                search_results=[SearchResult(rank_order=1, url='', title=error_msg)],
+                facets=None,
+                query_id=query_id,
+            )
 
         search_response = SearchResponse(search_results=results, facets=None, query_id=query_id)
         add_search_result_cache_item(search_response)
@@ -263,6 +229,53 @@ async def answer_question(
     )
 
 
+async def _search_official_documentation(
+    client: httpx.AsyncClient,
+    search_phrase: str,
+    limit: int,
+) -> list[SearchResult]:
+    """Search OCI docs JSON, falling back to the public HTML search page."""
+    search_url = build_oci_search_url(search_phrase, limit=limit, base_url=OCI_SEARCH_URL)
+    try:
+        response = await client.get(
+            search_url,
+            follow_redirects=True,
+            headers={
+                'User-Agent': DEFAULT_USER_AGENT,
+                'Accept': 'application/json, text/javascript, */*; q=0.01',
+                'Referer': build_oci_search_referer(search_phrase),
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-MCP-Session-Id': SESSION_UUID,
+            },
+            timeout=30,
+        )
+    except httpx.HTTPError as error:
+        logger.warning('OCI docs JSON search request failed for {!r}: {}', search_phrase, error)
+        return await _search_public_search_page(client, search_phrase, limit)
+
+    if response.status_code >= 400:
+        logger.warning(
+            'OCI docs JSON search returned status {} for {!r}',
+            response.status_code,
+            search_phrase,
+        )
+        return await _search_public_search_page(client, search_phrase, limit)
+
+    try:
+        results = parse_oci_search_response(response.json(), limit)
+    except (AttributeError, TypeError, ValueError) as error:
+        logger.warning(
+            'OCI docs JSON search returned malformed data for {!r}: {}', search_phrase, error
+        )
+        return await _search_public_search_page(client, search_phrase, limit)
+
+    if results:
+        return results
+
+    logger.warning('OCI docs JSON search returned no usable results for {!r}', search_phrase)
+    return await _search_public_search_page(client, search_phrase, limit)
+
+
 async def _search_public_search_page(
     client: httpx.AsyncClient,
     search_phrase: str,
@@ -281,12 +294,19 @@ async def _search_public_search_page(
             },
             timeout=30,
         )
-    except httpx.HTTPError:
+    except httpx.HTTPError as error:
+        logger.warning('Public OCI search request failed for {!r}: {}', search_phrase, error)
         return []
 
     if response.status_code >= 400:
+        logger.warning(
+            'Public OCI search returned status {} for {!r}', response.status_code, search_phrase
+        )
         return []
-    return parse_oci_search_results(response.text, limit)
+    results = parse_oci_search_results(response.text, limit)
+    if not results:
+        logger.warning('Public OCI search returned no usable results for {!r}', search_phrase)
+    return results
 
 
 async def _search_architecture_center(
@@ -308,15 +328,33 @@ async def _search_architecture_center(
             },
             timeout=30,
         )
-    except httpx.HTTPError:
+    except httpx.HTTPError as error:
+        logger.warning(
+            'Architecture Center search request failed for {!r}: {}', search_phrase, error
+        )
         return []
 
     if response.status_code >= 400:
+        logger.warning(
+            'Architecture Center search returned status {} for {!r}',
+            response.status_code,
+            search_phrase,
+        )
         return []
     try:
-        return parse_architecture_center_response(response.json(), limit)
-    except ValueError:
+        results = parse_architecture_center_response(response.json(), limit)
+    except (AttributeError, TypeError, ValueError) as error:
+        logger.warning(
+            'Architecture Center search returned malformed data for {!r}: {}',
+            search_phrase,
+            error,
+        )
         return []
+    if not results:
+        logger.warning(
+            'Architecture Center search returned no usable results for {!r}', search_phrase
+        )
+    return results
 
 
 async def _search_oracle_blogs(
@@ -338,15 +376,25 @@ async def _search_oracle_blogs(
             },
             timeout=30,
         )
-    except httpx.HTTPError:
+    except httpx.HTTPError as error:
+        logger.warning('Oracle Blogs search request failed for {!r}: {}', search_phrase, error)
         return []
 
     if response.status_code >= 400:
+        logger.warning(
+            'Oracle Blogs search returned status {} for {!r}', response.status_code, search_phrase
+        )
         return []
     try:
-        return parse_oracle_blog_search_response(response.json(), limit)
-    except ValueError:
+        results = parse_oracle_blog_search_response(response.json(), limit)
+    except (AttributeError, TypeError, ValueError) as error:
+        logger.warning(
+            'Oracle Blogs search returned malformed data for {!r}: {}', search_phrase, error
+        )
         return []
+    if not results:
+        logger.warning('Oracle Blogs search returned no usable results for {!r}', search_phrase)
+    return results
 
 
 def _rank_combined_search_results(
