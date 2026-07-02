@@ -215,11 +215,13 @@ async def answer_question(
     )
 
     documents = []
-    for result in ranked_results[:max_sources]:
+    for result in ranked_results:
         content = await read_documentation_impl(ctx, result.url, 12000, 0, SESSION_UUID)
         if _is_unreadable_documentation(content):
             continue
         documents.append(SourceDocument(result=result, content=content))
+        if len(documents) == max_sources:
+            break
 
     return build_cited_answer(
         question=question,

@@ -388,6 +388,102 @@ async def test_answer_question_searches_reads_and_returns_cited_answer():
 
 
 @pytest.mark.asyncio
+async def test_answer_question_backfills_unreadable_ranked_result():
+    """Read lower-ranked candidates until one readable source is available."""
+    blocked_result = SearchResult(
+        rank_order=1,
+        url='https://docs.oracle.com/en-us/iaas/Content/Compute/Tasks/blocked.htm',
+        title='Blocked Compute Page',
+        context='Compute instance documentation that cannot be fetched.',
+    )
+    readable_result = SearchResult(
+        rank_order=2,
+        url='https://docs.oracle.com/en-us/iaas/Content/Compute/Tasks/readable.htm',
+        title='Readable Compute Page',
+        context='Readable compute instance documentation.',
+    )
+    search_response = SearchResponse(
+        search_results=[blocked_result, readable_result],
+        facets=None,
+        query_id='query-backfill',
+    )
+
+    with (
+        patch(
+            'oci_documentation_mcp_server.server_oci.search_documentation',
+            new=AsyncMock(return_value=search_response),
+        ),
+        patch(
+            'oci_documentation_mcp_server.server_oci.read_documentation_impl',
+            new=AsyncMock(
+                side_effect=[
+                    'Failed to fetch OCI documentation: status code 403',
+                    'Launch the compute instance after selecting its shape and image.',
+                ]
+            ),
+        ) as read_mock,
+    ):
+        response = await answer_question(
+            MockContext(),
+            question='How do I launch a compute instance?',
+            max_sources=1,
+        )
+
+    assert 'Launch the compute instance after selecting its shape and image.' in response.answer
+    assert response.citations[0].url == readable_result.url
+    assert [call.args[1] for call in read_mock.await_args_list] == [
+        blocked_result.url,
+        readable_result.url,
+    ]
+
+
+@pytest.mark.asyncio
+async def test_answer_question_stops_reading_after_max_sources():
+    """Stop requesting ranked candidates once enough readable sources are collected."""
+    ranked_results = [
+        SearchResult(
+            rank_order=index,
+            url=f'https://docs.oracle.com/en-us/iaas/Content/Compute/Tasks/source-{index}.htm',
+            title=f'Compute Source {index}',
+            context=f'Readable compute instance documentation source {index}.',
+        )
+        for index in range(1, 4)
+    ]
+    search_response = SearchResponse(
+        search_results=ranked_results,
+        facets=None,
+        query_id='query-bounded',
+    )
+
+    with (
+        patch(
+            'oci_documentation_mcp_server.server_oci.search_documentation',
+            new=AsyncMock(return_value=search_response),
+        ),
+        patch(
+            'oci_documentation_mcp_server.server_oci.read_documentation_impl',
+            new=AsyncMock(
+                side_effect=[
+                    'The first readable source explains compute instance launch prerequisites.',
+                    'The second readable source explains the compute instance launch operation.',
+                    'The third readable source should never be requested.',
+                ]
+            ),
+        ) as read_mock,
+    ):
+        await answer_question(
+            MockContext(),
+            question='How do I launch a compute instance?',
+            max_sources=2,
+        )
+
+    assert [call.args[1] for call in read_mock.await_args_list] == [
+        ranked_results[0].url,
+        ranked_results[1].url,
+    ]
+
+
+@pytest.mark.asyncio
 async def test_answer_question_reads_blog_results_for_latest_context():
     """Use Oracle Blogs as readable evidence when answering latest/news questions."""
     blog_result = SearchResult(
